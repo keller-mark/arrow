@@ -142,27 +142,27 @@ export class RecordBatchReader<T extends TypeMap = any> extends ReadableInterop<
         throw new Error(`"throughDOM" not available in this environment`);
     }
 
-    public static from<T extends RecordBatchReader>(source: T): T;
-    public static from<T extends TypeMap = any>(source: FromArg0): RecordBatchStreamReader<T>;
-    public static from<T extends TypeMap = any>(source: FromArg1): Promise<RecordBatchStreamReader<T>>;
-    public static from<T extends TypeMap = any>(source: FromArg2): RecordBatchFileReader<T> | RecordBatchStreamReader<T>;
-    public static from<T extends TypeMap = any>(source: FromArg3): Promise<RecordBatchFileReader<T> | RecordBatchStreamReader<T>>;
-    public static from<T extends TypeMap = any>(source: FromArg4): Promise<AsyncRecordBatchFileReader<T> | AsyncRecordBatchStreamReader<T>>;
-    public static from<T extends TypeMap = any>(source: FromArg5): Promise<AsyncRecordBatchFileReader<T> | AsyncRecordBatchStreamReader<T>>;
+    public static from<T extends RecordBatchReader>(source: T, dictionaries?: Map<number, Vector>): T;
+    public static from<T extends TypeMap = any>(source: FromArg0, dictionaries?: Map<number, Vector>): RecordBatchStreamReader<T>;
+    public static from<T extends TypeMap = any>(source: FromArg1, dictionaries?: Map<number, Vector>): Promise<RecordBatchStreamReader<T>>;
+    public static from<T extends TypeMap = any>(source: FromArg2, dictionaries?: Map<number, Vector>): RecordBatchFileReader<T> | RecordBatchStreamReader<T>;
+    public static from<T extends TypeMap = any>(source: FromArg3, dictionaries?: Map<number, Vector>): Promise<RecordBatchFileReader<T> | RecordBatchStreamReader<T>>;
+    public static from<T extends TypeMap = any>(source: FromArg4, dictionaries?: Map<number, Vector>): Promise<AsyncRecordBatchFileReader<T> | AsyncRecordBatchStreamReader<T>>;
+    public static from<T extends TypeMap = any>(source: FromArg5, dictionaries?: Map<number, Vector>): Promise<AsyncRecordBatchFileReader<T> | AsyncRecordBatchStreamReader<T>>;
     /** @nocollapse */
-    public static from<T extends TypeMap = any>(source: any) {
+    public static from<T extends TypeMap = any>(source: any, dictionaries?: Map<number, Vector>) {
         if (source instanceof RecordBatchReader) {
             return source;
         } else if (isArrowJSON(source)) {
-            return fromArrowJSON<T>(source);
+            return fromArrowJSON<T>(source, dictionaries);
         } else if (isFileHandle(source)) {
-            return fromFileHandle<T>(source);
+            return fromFileHandle<T>(source, dictionaries);
         } else if (isPromise<any>(source)) {
-            return (async () => await RecordBatchReader.from<any>(await source))();
+            return (async () => await RecordBatchReader.from<any>(await source, dictionaries))();
         } else if (isFetchResponse(source) || isReadableDOMStream(source) || isReadableNodeStream(source) || isAsyncIterable(source)) {
-            return fromAsyncByteStream<T>(new AsyncByteStream(source));
+            return fromAsyncByteStream<T>(new AsyncByteStream(source), dictionaries);
         }
-        return fromByteStream<T>(new ByteStream(source));
+        return fromByteStream<T>(new ByteStream(source), dictionaries);
     }
 
     public static readAll<T extends RecordBatchReader>(source: T): T extends RecordBatchReaders ? IterableIterator<T> : AsyncIterableIterator<T>;
@@ -714,34 +714,34 @@ async function* readAllAsync<T extends TypeMap = any>(source: AsyncRecordBatchRe
 }
 
 /** @ignore */
-function fromArrowJSON<T extends TypeMap>(source: ArrowJSONLike) {
-    return new RecordBatchStreamReader(new RecordBatchJSONReaderImpl<T>(source));
+function fromArrowJSON<T extends TypeMap>(source: ArrowJSONLike, dictionaries?: Map<number, Vector>) {
+    return new RecordBatchStreamReader(new RecordBatchJSONReaderImpl<T>(source, dictionaries));
 }
 
 /** @ignore */
-function fromByteStream<T extends TypeMap>(source: ByteStream) {
+function fromByteStream<T extends TypeMap>(source: ByteStream, dictionaries?: Map<number, Vector>) {
     const bytes = source.peek((magicLength + 7) & ~7);
     return bytes && bytes.byteLength >= 4 ? !checkForMagicArrowString(bytes)
-        ? new RecordBatchStreamReader(new RecordBatchStreamReaderImpl<T>(source))
-        : new RecordBatchFileReader(new RecordBatchFileReaderImpl<T>(source.read()))
-        : new RecordBatchStreamReader(new RecordBatchStreamReaderImpl<T>(function* (): any { }()));
+        ? new RecordBatchStreamReader(new RecordBatchStreamReaderImpl<T>(source, dictionaries))
+        : new RecordBatchFileReader(new RecordBatchFileReaderImpl<T>(source.read(), dictionaries))
+        : new RecordBatchStreamReader(new RecordBatchStreamReaderImpl<T>(function* (): any { }(), dictionaries));
 }
 
 /** @ignore */
-async function fromAsyncByteStream<T extends TypeMap>(source: AsyncByteStream) {
+async function fromAsyncByteStream<T extends TypeMap>(source: AsyncByteStream, dictionaries?: Map<number, Vector>) {
     const bytes = await source.peek((magicLength + 7) & ~7);
     return bytes && bytes.byteLength >= 4 ? !checkForMagicArrowString(bytes)
-        ? new AsyncRecordBatchStreamReader(new AsyncRecordBatchStreamReaderImpl<T>(source))
-        : new RecordBatchFileReader(new RecordBatchFileReaderImpl<T>(await source.read()))
-        : new AsyncRecordBatchStreamReader(new AsyncRecordBatchStreamReaderImpl<T>(async function* (): any { }()));
+        ? new AsyncRecordBatchStreamReader(new AsyncRecordBatchStreamReaderImpl<T>(source, dictionaries))
+        : new RecordBatchFileReader(new RecordBatchFileReaderImpl<T>(await source.read(), dictionaries))
+        : new AsyncRecordBatchStreamReader(new AsyncRecordBatchStreamReaderImpl<T>(async function* (): any { }(), dictionaries));
 }
 
 /** @ignore */
-async function fromFileHandle<T extends TypeMap>(source: FileHandle) {
+async function fromFileHandle<T extends TypeMap>(source: FileHandle, dictionaries?: Map<number, Vector>) {
     const { size } = await source.stat();
     const file = new AsyncRandomAccessFile(source, size);
     if (size >= magicX2AndPadding && checkForMagicArrowString(await file.readAt(0, (magicLength + 7) & ~7))) {
-        return new AsyncRecordBatchFileReader(new AsyncRecordBatchFileReaderImpl<T>(file));
+        return new AsyncRecordBatchFileReader(new AsyncRecordBatchFileReaderImpl<T>(file, undefined, dictionaries));
     }
-    return new AsyncRecordBatchStreamReader(new AsyncRecordBatchStreamReaderImpl<T>(file));
+    return new AsyncRecordBatchStreamReader(new AsyncRecordBatchStreamReaderImpl<T>(file, dictionaries));
 }
